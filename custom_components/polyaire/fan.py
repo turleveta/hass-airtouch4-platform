@@ -1,7 +1,7 @@
 from homeassistant.components.fan import FanEntity
+
 from homeassistant.components.fan import (
-    SUPPORT_SET_SPEED,
-    SUPPORT_PRESET_MODE,
+    FanEntityFeature,
 )
 
 from .const import DOMAIN
@@ -81,7 +81,7 @@ class AirTouchGroupDamper(FanEntity):
     @property
     def supported_features(self):
         """Flag supported features."""
-        return SUPPORT_PRESET_MODE | SUPPORT_SET_SPEED # (self._group.group_control_type == 0 and SUPPORT_SET_SPEED)
+        return FanEntityFeature.TURN_ON | FanEntityFeature.TURN_OFF | FanEntityFeature.PRESET_MODE | FanEntityFeature.SET_SPEED
 
     @property
     def preset_mode(self):

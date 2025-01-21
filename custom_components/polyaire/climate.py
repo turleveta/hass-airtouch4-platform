@@ -8,23 +8,13 @@ from homeassistant.components.climate.const import (
     FAN_HIGH,
     FAN_LOW,
     FAN_MEDIUM,
-    HVAC_MODE_AUTO,
-    HVAC_MODE_COOL,
-    HVAC_MODE_DRY,
-    HVAC_MODE_FAN_ONLY,
-    HVAC_MODE_HEAT,
-    HVAC_MODE_OFF,
-    CURRENT_HVAC_OFF,
-    CURRENT_HVAC_HEAT,
-    CURRENT_HVAC_COOL,
-    CURRENT_HVAC_DRY,
-    CURRENT_HVAC_IDLE,
-    CURRENT_HVAC_FAN,
-    SUPPORT_FAN_MODE,
-    SUPPORT_TARGET_TEMPERATURE,
-    SUPPORT_PRESET_MODE,
+    HVACMode,
+    HVACAction,
+    ClimateEntityFeature,
 )
-from homeassistant.const import ATTR_TEMPERATURE, TEMP_CELSIUS
+from homeassistant.const import ATTR_TEMPERATURE
+from homeassistant.const import UnitOfTemperature
+
 from homeassistant.helpers.entity import DeviceInfo
 
 from .const import DOMAIN
@@ -37,13 +27,13 @@ POWER_ON = 1
 POWER_OFF = 0
 
 MAP_AC_MODE = {
-    0: HVAC_MODE_AUTO,      # AUTO
-    1: HVAC_MODE_HEAT,      # HEAT
-    2: HVAC_MODE_DRY,       # DRY
-    3: HVAC_MODE_FAN_ONLY,  # FAN
-    4: HVAC_MODE_COOL,      # COOL
-    8: HVAC_MODE_AUTO,      # AUTO-HEAT
-    9: HVAC_MODE_AUTO       # AUTO-COOL
+    0: HVACMode.AUTO,      # AUTO
+    1: HVACMode.HEAT,      # HEAT
+    2: HVACMode.DRY,       # DRY
+    3: HVACMode.FAN_ONLY,  # FAN
+    4: HVACMode.COOL,      # COOL
+    8: HVACMode.AUTO,      # AUTO-HEAT
+    9: HVACMode.AUTO       # AUTO-COOL
 }
 
 MAP_AC_FAN_MODE = {
@@ -125,7 +115,7 @@ class AirTouchGroupThermostat(ClimateEntity):
     @property
     def temperature_unit(self):
         """Return the unit of measurement."""
-        return TEMP_CELSIUS
+        return UnitOfTemperature.CELSIUS
     
     @property
     def current_temperature(self):
@@ -159,38 +149,37 @@ class AirTouchGroupThermostat(ClimateEntity):
     @property
     def hvac_action(self):
         """Return the current running hvac operation if supported."""
-        if self.hvac_mode == HVAC_MODE_OFF:
-            return CURRENT_HVAC_OFF
+        if self.hvac_mode == HVACMode.OFF:
+            return HVACAction.OFF
         elif self._ac.ac_power_state == POWER_OFF:
-            return CURRENT_HVAC_IDLE
-        elif self._ac.ac_mode == MAP_VALUE_SEARCH(MAP_AC_MODE, HVAC_MODE_HEAT):
-            return CURRENT_HVAC_HEAT
-        elif self._ac.ac_mode == MAP_VALUE_SEARCH(MAP_AC_MODE, HVAC_MODE_COOL):
-            return CURRENT_HVAC_COOL
-        elif self._ac.ac_mode == MAP_VALUE_SEARCH(MAP_AC_MODE, HVAC_MODE_DRY):
-            return CURRENT_HVAC_DRY
-        elif self._ac.ac_mode == MAP_VALUE_SEARCH(MAP_AC_MODE, HVAC_MODE_FAN_ONLY):
-            return CURRENT_HVAC_FAN
+            return HVACAction.IDLE
+        elif self._ac.ac_mode == MAP_VALUE_SEARCH(MAP_AC_MODE, HVACMode.HEAT):
+            return HVACAction.HEAT
+        elif self._ac.ac_mode == MAP_VALUE_SEARCH(MAP_AC_MODE, HVACMode.COOL):
+            return HVACAction.COOL
+        elif self._ac.ac_mode == MAP_VALUE_SEARCH(MAP_AC_MODE, HVACMode.DRY):
+            return HVACAction.DRY
+        elif self._ac.ac_mode == MAP_VALUE_SEARCH(MAP_AC_MODE, HVACMode.FAN_ONLY):
+            return HVACAction.FAN
         return None
 
     @property
     def hvac_mode(self):
         """Return current operation mode."""
         if self._group.group_power_state == POWER_ON:
-            return HVAC_MODE_AUTO
-        return HVAC_MODE_OFF
+            return HVACMode.AUTO
+        return HVACMode.OFF
 
     @property
     def hvac_modes(self):
         """Return the list of available operation modes."""
-        return [HVAC_MODE_AUTO, HVAC_MODE_OFF]
+        return [HVACMode.AUTO, HVACMode.OFF]
 
     @property
     def supported_features(self):
         """Return the list of supported features."""
-        return SUPPORT_PRESET_MODE | (self._group.group_control_type == 1 and SUPPORT_TARGET_TEMPERATURE)
+        return ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF | ClimateEntityFeature.PRESET_MODE | (self._group.group_control_type == 1 and ClimateEntityFeature.TARGET_TEMPERATURE)
 
-    @property
     def preset_mode(self):
         """Return preset mode."""
         if self._group.group_has_sensor and self._group.group_control_type == 1:
@@ -207,9 +196,9 @@ class AirTouchGroupThermostat(ClimateEntity):
 
     async def async_set_hvac_mode(self, hvac_mode):
         """Set new target hvac mode."""
-        if hvac_mode == self.hvac_mode and hvac_mode != HVAC_MODE_OFF:
+        if hvac_mode == self.hvac_mode and hvac_mode != HVACMode.OFF:
             return
-        elif hvac_mode == HVAC_MODE_OFF and self.hvac_mode != HVAC_MODE_OFF:
+        elif hvac_mode == HVACMode.OFF and self.hvac_mode != HVACMode.OFF:
             await self._airtouch.request_group_power(self._id, POWER_OFF)
         else:
             await self._airtouch.request_group_power(self._id, POWER_ON)
@@ -287,7 +276,7 @@ class AirTouchACThermostat(ClimateEntity):
     @property
     def temperature_unit(self):
         """Return the unit of measurement."""
-        return TEMP_CELSIUS
+        return UnitOfTemperature.CELSIUS
     
     @property
     def current_temperature(self):
@@ -311,14 +300,14 @@ class AirTouchACThermostat(ClimateEntity):
         total_active = len([group for group in self._groups if group.group_power_state == POWER_ON])
         if itc_control == total_active:
             # all groups are controlled by ITC, AC temperature control is disabled
-            if self.hvac_mode == HVAC_MODE_HEAT or self._ac.ac_mode == 8:
+            if self.hvac_mode == HVACMode.HEAT: #or self._ac.ac_mode == 8:
                 # heat: max(groups)
                 temp = self._info["ac_min_temp"]
                 for group in self._groups:
                     if group.group_target > temp and group.group_power_state == POWER_ON:
                         temp = group.group_target
                 return temp
-            elif self.hvac_mode == HVAC_MODE_COOL or self._ac.ac_mode == 9:
+            elif self.hvac_mode == HVACMode.COOL: #or self._ac.ac_mode == 9:
                 # cool: min(groups)
                 temp = self._info["ac_max_temp"]
                 for group in self._groups:
@@ -327,7 +316,7 @@ class AirTouchACThermostat(ClimateEntity):
                 return temp
             else:
                 return None
-        elif itc_control > 0 and (self.hvac_mode == HVAC_MODE_HEAT or self._ac.ac_mode == 8):
+        elif itc_control > 0 and (self.hvac_mode == HVACMode.HEAT): #or self._ac.ac_mode == 8):
             # heat: max(groups)
             temp = self._info["ac_min_temp"]
             for group in self._groups:
@@ -343,14 +332,14 @@ class AirTouchACThermostat(ClimateEntity):
         total_active = len([group for group in self._groups if group.group_power_state == POWER_ON])
         if itc_control == total_active:
             # all groups are controlled by ITC, AC temperature control is disabled
-            if self.hvac_mode == HVAC_MODE_HEAT or self._ac.ac_mode == 8:
+            if self.hvac_mode == HVACMode.HEAT:
                 # heat: max(groups)
                 temp = self._info["ac_min_temp"]
                 for group in self._groups:
                     if group.group_target > temp and group.group_power_state == POWER_ON:
                         temp = group.group_target
                 return temp
-            elif self.hvac_mode == HVAC_MODE_COOL or self._ac.ac_mode == 9:
+            elif self.hvac_mode == HVACMode.COOL:
                 # cool: min(groups)
                 temp = self._info["ac_max_temp"]
                 for group in self._groups:
@@ -359,7 +348,7 @@ class AirTouchACThermostat(ClimateEntity):
                 return temp
             else:
                 return None
-        elif itc_control > 0 and (self.hvac_mode == HVAC_MODE_COOL or self._ac.ac_mode == 9):
+        elif itc_control > 0 and (self.hvac_mode == HVACMode.COOL):
             # cool: min(groups)
             temp = self._info["ac_max_temp"]
             for group in self._groups:
@@ -372,13 +361,13 @@ class AirTouchACThermostat(ClimateEntity):
     def hvac_mode(self):
         """Return current operation mode."""
         if self._ac.ac_power_state == POWER_OFF:
-            return HVAC_MODE_OFF
+            return HVACMode.OFF
         return MAP_AC_MODE[self._ac.ac_mode]
 
     @property
     def hvac_modes(self):
         """Return the list of available operation modes."""
-        modes = [HVAC_MODE_OFF]
+        modes = [HVACMode.OFF]
         for mode, enabled in self._info["ac_modes"].items():
             if enabled: modes.extend([MAP_AC_MODE[mode]])
         return modes
@@ -401,15 +390,15 @@ class AirTouchACThermostat(ClimateEntity):
         """Return the list of supported features."""
         itc_control = sum([group.group_control_type for group in self._groups if group.group_power_state == POWER_ON])
         total_active = len([group for group in self._groups if group.group_power_state == POWER_ON])
-        return (itc_control < total_active and SUPPORT_TARGET_TEMPERATURE) | (len(self.fan_modes) > 0 and SUPPORT_FAN_MODE)
+        return ClimateEntityFeature.TURN_OFF | ClimateEntityFeature.TURN_ON | (itc_control < total_active and ClimateEntityFeature.TARGET_TEMPERATURE) | (len(self.fan_modes) > 0 and ClimateEntityFeature.FAN_MODE)
 
     async def async_set_hvac_mode(self, hvac_mode):
         """Set new target hvac mode."""
-        if hvac_mode == self.hvac_mode and hvac_mode != HVAC_MODE_OFF:
+        if hvac_mode == self.hvac_mode and hvac_mode != HVACMode.OFF:
             return
-        elif hvac_mode == HVAC_MODE_OFF and self.hvac_mode != HVAC_MODE_OFF:
+        elif hvac_mode == HVACMode.OFF and self.hvac_mode != HVACMode.OFF:
             await self.async_turn_off()
-        elif hvac_mode == HVAC_MODE_OFF and self.hvac_mode == HVAC_MODE_OFF:
+        elif hvac_mode == HVACMode.OFF and self.hvac_mode == HVACMode.OFF:
             await self.async_turn_on()
         else:
             mode = MAP_VALUE_SEARCH(MAP_AC_MODE, hvac_mode)
